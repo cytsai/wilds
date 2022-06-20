@@ -5,6 +5,12 @@ algorithm_defaults = {
         'eval_loader': 'standard',
         'randaugment_n': 2,     # When running ERM + data augmentation
     },
+    'LPFT': {
+        'train_loader': 'standard',
+        'uniform_over_groups': False,
+        'eval_loader': 'standard',
+        'randaugment_n': 2,     # When running ERM + data augmentation
+    },
     'groupDRO': {
         'train_loader': 'standard',
         'uniform_over_groups': True,

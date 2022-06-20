@@ -3,6 +3,7 @@ import torch
 import math
 from wilds.common.utils import get_counts
 from algorithms.ERM import ERM
+from algorithms.LPFT import LPFT
 from algorithms.AFN import AFN
 from algorithms.DANN import DANN
 from algorithms.groupDRO import GroupDRO
@@ -26,6 +27,14 @@ def initialize_algorithm(config, datasets, train_grouper, unlabeled_dataset=None
 
     if config.algorithm == 'ERM':
         algorithm = ERM(
+            config=config,
+            d_out=d_out,
+            grouper=train_grouper,
+            loss=loss,
+            metric=metric,
+            n_train_steps=n_train_steps)
+    elif config.algorithm == 'LPFT':
+        algorithm = LPFT(
             config=config,
             d_out=d_out,
             grouper=train_grouper,

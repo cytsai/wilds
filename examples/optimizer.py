@@ -5,6 +5,7 @@ def initialize_optimizer(config, model):
     # initialize optimizers
     if config.optimizer=='SGD':
         params = filter(lambda p: p.requires_grad, model.parameters())
+        #params = [{'params':model.classifier.parameters(), 'weight_decay':100*config.weight_decay}, {'params':model.features.parameters()}]
         optimizer = SGD(
             params,
             lr=config.lr,
