@@ -42,10 +42,8 @@ def run_epoch(algorithm, dataset, general_logger, epoch, config, train, unlabele
     batch_idx = 0
     for labeled_batch in batches:
         if train:
-            ########################################
             if config.algorithm == 'LPFT':
                 algorithm.switch(epoch, batch_idx, len(batches))
-            ########################################
             if unlabeled_dataset:
                 unlabeled_batch = next(unlabeled_data_iterator)
                 batch_results = algorithm.update(labeled_batch, unlabeled_batch, is_epoch_end=(batch_idx==last_batch_idx))
