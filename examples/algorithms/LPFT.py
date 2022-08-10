@@ -15,16 +15,20 @@ stages = {'densenet121': [['classifier'],
                           ['layer1'],
                           ['bn1', 'conv1']]}
 
-#settings = ()
-#settings = (0.0, [1,2,3,4,5], False), (1.0, [1,2,3,4,5], True)
-#settings = (0.0, [1,2,3,4,5], False), (0.5, [1], True), (0.625, [2], True), (0.75, [3], True), (0.875, [4], True), (1.0, [5], True)
-settings = (0.0, [0,1,2,3,4,5], False), (1.0, [0], False)
+#settings = () # FT
+settings = (0.0, [1,2,3,4,5], False), # LP
+#settings = (0.0, [1,2,3,4,5], False), (2.0, [1,2,3,4,5], True) # LPFT
+#settings = (0.0, [1,2,3,4,5], False), (0.5, [1], True), (0.625, [2], True), (0.75, [3], True), (0.875, [4], True), (1.0, [5], True) # RHT
+#settings = (0.0, [1,2,3,4,5], False), (2.0, [1], True), (2.5, [2], True), (3.0, [3], True), (3.5, [4], True), (4.0, [5], True) # RHT
+#settings = (0.0, [0,1,2,3,4,5], False), (1.0, [0], False)
+#settings = (0.0, [0,1,2,3,4,5], False), (1.0, [0,1,2,3,4,5], True)
 
 
 class LPFT(ERM):
     def __init__(self, config, d_out, **kwargs):
         super().__init__(config, d_out, **kwargs)
         self.stage_module_names = stages[config.model]
+        self.backprop = True
 
         self.clf = LogisticRegression(config.seed, d_out)
         self.fit_clf = False
@@ -44,7 +48,6 @@ class LPFT(ERM):
         def _set_BN(m):
             if isinstance(m, torch.nn.BatchNorm2d):
                 m.train(train)
-                #m.requires_grad_(train)
 
         for stage in stages:
             module_names = self.stage_module_names[stage]
@@ -81,15 +84,11 @@ class LPFT(ERM):
             super()._update(results, should_step=should_step)
         else:
             results['objective'] = self.objective(results).item()
-        #try:
-        #    super()._update(results, should_step=should_step)
-        #except RuntimeError as err:
-        #    print('WARN:', err, '\r')
 
     def update(self, batch, **kwargs):
         results = super().update(batch, **kwargs)
         if self.clf.train:
-            self.clf.update(self._feature, batch[1].detach().clone())
+            self.clf.update(X=self._feature, y=batch[1].detach().clone())
             if self.fit_clf:
                 self.clf.fit()
                 self.fit_clf = False
