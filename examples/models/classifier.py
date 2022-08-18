@@ -2,22 +2,25 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from sklearn.linear_model import LogisticRegression as Ref
+import time
 import pickle
 
 DEBUG = 0
 
 
 class IRLS:
-    def __init__(self, n_classes, weight_decay=0.01, max_iter=5):
+    def __init__(self, n_classes, weight_decay=0.01, max_iter=15):
         self.C = n_classes
         self.weight_decay = weight_decay
         self.max_iter = max_iter
 
     def _solve(self, H, g):
-        g = g.unsqueeze(-1)
-        LD, pivots, _ = torch.linalg.ldl_factor_ex(H)
-        g = torch.linalg.ldl_solve(LD, pivots, g)
-        return g.squeeze(-1)
+        try:
+            g = torch.cholesky_solve(g.unsqueeze(-1), torch.linalg.cholesky(H))
+            return g.squeeze(-1), ''
+        except Exception as err:
+            g = torch.zeros_like(g)
+            return g, err
 
     def _activation(self, l):
         #return F.softmax(l, dim=-1)
@@ -29,43 +32,56 @@ class IRLS:
         D = X.shape[1]
         t = F.one_hot(y, self.C).float()
 
-        W = X.new_zeros(D, self.C)
+        W = X.new_zeros(self.C, D)
         H = X.new_zeros(self.C, D, D)
-        p = self._activation(X @ W)
+        p = self._activation(X @ W.T)
 
         for i in range(self.max_iter):
+            st = time.time()
             print('-' * 80)
             print('Iteration:', i)
-            g = X.T @ (p - t) + W * self.weight_decay
+
+            g = (p - t).T @ X + W * self.weight_decay
             r = p * (1 - p)
             for c in range(self.C):
-                XTX = X.T @ (r[:,c].unsqueeze(-1) * X)
-                XTX.diag().add_(self.weight_decay) # TODO: check alg
-                H[c] = XTX
+                Hc = X.T @ (r[:,c].unsqueeze(-1) * X)
+                Hc.diag().add_(self.weight_decay)
+                H[c] = Hc
 
-            d  = self._solve(H, g.T).T
+            d, err = self._solve(H, g)
+            if err:
+                print(err)
+                break
             W -= d
-            print(f'd_max, W_max = {d.abs().max():.3f}, {W.abs().max():.3f}')
+            #print(f'd_max, W_max = {d.abs().max():.3f}, {W.abs().max():.3f}')
+            assert not W.isnan().any()
 
-            l = X @ W
+            l = X @ W.T
             p = self._activation(l)
 
             BCE = F.binary_cross_entropy(p, t).item() * self.C
             CE  = F.cross_entropy(l, y).item()
             Acc = (l.max(-1)[-1] == y).sum().item() / len(y)
             print(f'BCE, CE, Acc = {BCE:.3f}, {CE:.3f}, {Acc:.3f}')
+            print('Time:', time.time()-st)
+        #del X, y, t, H
         print('-' * 80)
-        del X, y, t, H
         return W.cpu()
 
     def fit(self, X, y):
+        self._s, self._u = torch.std_mean(X, dim=0, unbiased=False, keepdim=True)
+        X = (X - self._u) / self._s
+
         D = X.shape[1]
         X = torch.cat((X, X.new_ones(X.shape[0], 1)), dim=-1)
-        self.W, self.b = self._fit(X, y).split([D,1], dim=0)
-        self.b.squeeze_(0)
+        self.W, self.b = self._fit(X, y).split([D,1], dim=-1)
+
+        self.b -= self.W @ (self._u / self._s).T
+        self.W /= self._s
+        self.b.squeeze_(-1)
 
     def score(self, X, y):
-        l = X @ self.W + self.b #.unsqueeze(0)
+        l = X @ self.W.T + self.b
         return (l.max(-1)[-1] == y).sum().item() / len(y)
 
 
@@ -102,7 +118,7 @@ class LogisticRegression:
         self.fitted = True
         print('Acc:', self.clf.score(X, y))
         print('=' * 80)
-        del X, y
+        #del X, y
 
     def get_Wb(self):
         if isinstance(self.clf, IRLS):
@@ -110,14 +126,20 @@ class LogisticRegression:
 
         W = torch.from_numpy(self.clf.coef_)
         b = torch.from_numpy(self.clf.intercept_)
-        if len(self.n_classes) > 2:
+        if self.n_classes > 2:
             return W, b
         else:
             return torch.cat((-W, W)), torch.cat((-b, b))
 
 
-if __name__ == '__main__':
-    with open('features.pkl', 'rb') as f:
+def _fit(dataset='iwildcam'):
+    with open(dataset+'.pkl', 'rb') as f:
         X, y = pickle.load(f)
     clf = LogisticRegression(0, y.max().item()+1)
     clf.fit(X, y)
+    return clf.get_Wb()
+
+
+if __name__ == '__main__':
+    dataset = ['iwildcam', 'camelyon17']
+    print(_fit(dataset[0]))

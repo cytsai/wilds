@@ -1,6 +1,6 @@
 import torch
 from algorithms.ERM import ERM
-from models.classifier import LogisticRegression
+from models.classifier import LogisticRegression, _fit
 
 stages = {'densenet121': [['classifier'],
                           ['features.norm5'      , 'features.denseblock4'],
@@ -16,12 +16,13 @@ stages = {'densenet121': [['classifier'],
                           ['bn1', 'conv1']]}
 
 #settings = () # FT
-settings = (0.0, [1,2,3,4,5], False), # LP
+#settings = (0.0, [1,2,3,4,5], False), # LP
 #settings = (0.0, [1,2,3,4,5], False), (2.0, [1,2,3,4,5], True) # LPFT
 #settings = (0.0, [1,2,3,4,5], False), (0.5, [1], True), (0.625, [2], True), (0.75, [3], True), (0.875, [4], True), (1.0, [5], True) # RHT
 #settings = (0.0, [1,2,3,4,5], False), (2.0, [1], True), (2.5, [2], True), (3.0, [3], True), (3.5, [4], True), (4.0, [5], True) # RHT
 #settings = (0.0, [0,1,2,3,4,5], False), (1.0, [0], False)
 #settings = (0.0, [0,1,2,3,4,5], False), (1.0, [0,1,2,3,4,5], True)
+settings = (0.0, [2,3,4,5], False), (0.2, [2], True), (0.4, [3], True), (0.6, [4], True), (0.8, [5], True) # RHT
 
 
 class LPFT(ERM):
@@ -37,6 +38,10 @@ class LPFT(ERM):
                 self._feature = input[0].detach().clone()
         self.lin = self._get_module(self.stage_module_names[0][0])
         self.lin.register_forward_pre_hook(_get_feature)
+        ##
+        W, b = _fit(config.dataset)
+        self.lin.weight.data.copy_(W)
+        self.lin.bias  .data.copy_(b)
 
     def _get_module(self, name):
         m = self.model
@@ -93,6 +98,6 @@ class LPFT(ERM):
                 self.clf.fit()
                 self.fit_clf = False
                 W, b = self.clf.get_Wb()
-                self.lin.weight.data.copy_(torch.from_numpy(W))
-                self.lin.bias  .data.copy_(torch.from_numpy(b))
+                self.lin.weight.data.copy_(W)
+                self.lin.bias  .data.copy_(b)
         return results
